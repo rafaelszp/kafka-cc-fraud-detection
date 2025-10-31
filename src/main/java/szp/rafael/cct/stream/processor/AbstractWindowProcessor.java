@@ -66,11 +66,11 @@ public abstract class AbstractWindowProcessor implements ProcessorSupplier<Strin
                 //Aqui estou buscando as transações 30min antes da transação atual
                 //Será registrado na store todas as transações dentro do range de 30min
                 try(WindowStoreIterator<ProcessedClientCCTransaction> iterator = transactionStore.fetch(clientId, windowStart.toEpochMilli(),clientTransaction.getTimestamp())){
-                    logger.info("loop --------------------------------------------------------------->\n");
+                    logger.debug("loop --------------------------------------------------------------->\n");
                     while (iterator.hasNext()) {
                         KeyValue<Long, ProcessedClientCCTransaction> next = iterator.next();
-                        logger.info("\n\ncurrent {}",clientTransaction.toJSONString());
-                        logger.info("fetch   {}\n\n",next.value.toJSONString());
+                        logger.debug("\n\ncurrent {}",clientTransaction.toJSONString());
+                        logger.debug("fetch   {}\n\n",next.value.toJSONString());
                         transaction.getLastCCTransactions().add(next.value.getCurrentClientCCTransaction());
                     }
                 }
