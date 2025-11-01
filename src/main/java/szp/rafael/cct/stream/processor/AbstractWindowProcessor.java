@@ -71,6 +71,7 @@ public abstract class AbstractWindowProcessor implements ProcessorSupplier<Strin
                         KeyValue<Long, ProcessedClientCCTransaction> next = iterator.next();
                         logger.debug("\n\ncurrent {}",clientTransaction.toJSONString());
                         logger.debug("fetch   {}\n\n",next.value.toJSONString());
+                        transaction.getLastCCTransactions().add(transaction.getCurrentClientCCTransaction());
                         transaction.getLastCCTransactions().add(next.value.getCurrentClientCCTransaction());
                     }
                 }

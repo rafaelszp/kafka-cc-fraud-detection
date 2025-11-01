@@ -8,6 +8,7 @@ import org.apache.kafka.streams.TestInputTopic;
 import org.apache.kafka.streams.TestOutputTopic;
 import org.apache.kafka.streams.Topology;
 import org.apache.kafka.streams.TopologyTestDriver;
+import org.apache.kafka.streams.state.KeyValueStore;
 import org.apache.kafka.streams.state.WindowStore;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assertions;
@@ -34,6 +35,7 @@ import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Properties;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 
 public class MainAppTest {
@@ -58,14 +60,13 @@ public class MainAppTest {
     public void should_process_account_transactions(){
 
         Topology build = CreditCardTransactionTopology.build();
-        System.out.println(build.describe());
+//        System.out.println(build.describe());
         try (final TopologyTestDriver testDriver = new TopologyTestDriver(build, streamProps)) {
             final TestInputTopic<String, CreditCardTransaction> ccTransactions = testDriver.createInputTopic(
                     CreditCardTransactionTopology.TRANSACTIONS_TOPIC,
                     Serdes.String().serializer(),
                     CreditCardTransactionTopology.getCreditCardTransactionSerde().serializer()
             );
-            final WindowStore<String, ProcessedClientCCTransaction> store = testDriver.getWindowStore(CreditCardTransactionTopology.GEO_CC_STORE);
 
             String accountId = "ACC_01";
             CardDetails cardDetails = new CardDetails("1234-5678-9012-3456","teste","123", "12/25");
@@ -81,8 +82,8 @@ public class MainAppTest {
                     new CreditCardTransaction(UlidCreator.getMonotonicUlid().toLowerCase(),accountId,BigDecimal.valueOf(25d), now.plus(10,ChronoUnit.MINUTES).toEpochMilli(),cardDetails,goianiaGeo,ipData),
                     new CreditCardTransaction(UlidCreator.getMonotonicUlid().toLowerCase(),accountId,BigDecimal.valueOf(40d), now.plus(15,ChronoUnit.MINUTES).toEpochMilli(),cardDetails,goianiaGeo,ipData),
                     new CreditCardTransaction(UlidCreator.getMonotonicUlid().toLowerCase(),accountId,BigDecimal.valueOf(60d), now.plus(20,ChronoUnit.MINUTES).toEpochMilli(),cardDetails,goianiaGeo,ipData),
-                    new CreditCardTransaction(UlidCreator.getMonotonicUlid().toLowerCase(),accountId,BigDecimal.valueOf(120d), now.plus(60,ChronoUnit.MINUTES).toEpochMilli(),cardDetails,goianiaGeo,ipData),
-                    new CreditCardTransaction(UlidCreator.getMonotonicUlid().toLowerCase(),accountId,BigDecimal.valueOf(190d), now.plus(70,ChronoUnit.MINUTES).toEpochMilli(),cardDetails,saoPauloGeo,ipData)
+                    new CreditCardTransaction(UlidCreator.getMonotonicUlid().toLowerCase()+"1_FRD",accountId,BigDecimal.valueOf(120d), now.plus(60,ChronoUnit.MINUTES).toEpochMilli(),cardDetails,goianiaGeo,ipData),
+                    new CreditCardTransaction(UlidCreator.getMonotonicUlid().toLowerCase()+"2_FRD",accountId,BigDecimal.valueOf(190d), now.plus(70,ChronoUnit.MINUTES).toEpochMilli(),cardDetails,saoPauloGeo,ipData)
             );
 
             transactions.forEach(txn-> ccTransactions.pipeInput(txn.getTransactionId(),txn,txn.getTimestamp()));
@@ -90,13 +91,16 @@ public class MainAppTest {
             final BigDecimal expectedValue = BigDecimal.ZERO.setScale(2, RoundingMode.HALF_EVEN);
 
 
-            testDriver.advanceWallClockTime(Duration.of(2, ChronoUnit.HOURS));
 
-//            ProcessedClientCCTransaction transaction = store.fetch(accountId,now.minusSeconds(3600),now.plusSeconds(3600)).next().value;
-//            Assertions.assertEquals(expectedValue,transaction.getFraudScore());
 
             final TestOutputTopic<String, ProcessedClientCCTransaction> processedAccountTransactionsTopic = testDriver.createOutputTopic(
                     CreditCardTransactionTopology.PROCESSED_CREDIT_CARD_TRANSACTIONS_TOPIC,
+                    Serdes.String().deserializer(),
+                    CreditCardTransactionTopology.getProcessedClientCCTransactionJSONSerdes().deserializer()
+            );
+
+            final TestOutputTopic<String, ProcessedClientCCTransaction> refusedTransactionsTopic = testDriver.createOutputTopic(
+                    CreditCardTransactionTopology.REFUSED_CREDIT_CARD_TRANSACTIONS_TOPIC,
                     Serdes.String().deserializer(),
                     CreditCardTransactionTopology.getProcessedClientCCTransactionJSONSerdes().deserializer()
             );
@@ -104,11 +108,18 @@ public class MainAppTest {
             final int expectedCompletedCount = transactions.size() - expectedRejectedCount;
 
             List<ProcessedClientCCTransaction> processedTransactions = processedAccountTransactionsTopic.readValuesToList();
+            List<ProcessedClientCCTransaction> refusedTransactions = refusedTransactionsTopic.readValuesToList();
             System.out.println("processedTransactions = " + processedTransactions.size());
+            processedTransactions.forEach(pt-> System.out.println("ac = " + pt.getCurrentClientCCTransaction().getTransactionId()+" fs:  "+pt.getFraudScore().doubleValue()));
+            System.out.println("refusedTransactions   = " + refusedTransactions.size());
+            refusedTransactions.forEach(pt-> System.out.println("rf = " + pt.getCurrentClientCCTransaction().getTransactionId()+" fs:  "+pt.getFraudScore().doubleValue()
+                    +pt.getLastCCTransactions().stream().map(CreditCardTransaction::getTransactionId).collect(Collectors.joining(", "))));
 //            Assertions.assertEquals(expectedCompletedCount,processedTransactions.stream().filter(pt-> AccountTransaction.TransactionStatus.COMPLETED.equals(pt.getTransaction().getStatus())).count());
 //            Assertions.assertEquals(expectedRejectedCount,processedTransactions.stream().filter(pt-> AccountTransaction.TransactionStatus.REJECTED.equals(pt.getTransaction().getStatus())).count());
 
-
+            testDriver.advanceWallClockTime(Duration.of(2, ChronoUnit.HOURS));
+            CreditCardTransaction fifthTransaction = transactions.get(5);
+//            Assertions.assertEquals(expectedValue,txVal.getFraudScore());
         }
 
 

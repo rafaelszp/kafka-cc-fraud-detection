@@ -10,6 +10,7 @@ public class CreditCardTransaction extends AbstractModel {
     private String clientId; // ID do cliente (Chave do tópico Kafka)
     private BigDecimal amount;   // Valor da transação
     private long timestamp; // Timestamp UTC
+    private boolean isFraud;
 
     // Objetos aninhados
     private CardDetails cardDetails;
@@ -89,4 +90,11 @@ public class CreditCardTransaction extends AbstractModel {
         this.ipData = ipData;
     }
 
+    public boolean isFraud() {
+        return isFraud;
+    }
+
+    public void setFraud(boolean fraud) {
+        isFraud = fraud;
+    }
 }

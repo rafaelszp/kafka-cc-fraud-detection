@@ -1,6 +1,7 @@
 package szp.rafael.cct.stream.join;
 
 import org.apache.kafka.streams.kstream.ValueJoiner;
+import szp.rafael.cct.model.creditCard.CreditCardTransaction;
 import szp.rafael.cct.model.creditCard.ProcessedClientCCTransaction;
 
 import java.util.LinkedHashSet;
@@ -11,6 +12,7 @@ public class ProcessedClientCCJoiner implements ValueJoiner<ProcessedClientCCTra
     public ProcessedClientCCTransaction apply(ProcessedClientCCTransaction left, ProcessedClientCCTransaction right) {
         ProcessedClientCCTransaction joined = new ProcessedClientCCTransaction(left.getClientId(),left.getCurrentClientCCTransaction(),new LinkedHashSet<>());
         joined.setFraudScore(left.getFraudScore().add(right.getFraudScore()));
+        joined.getLastCCTransactions().addAll(right.getLastCCTransactions());
         return joined;
     }
 }

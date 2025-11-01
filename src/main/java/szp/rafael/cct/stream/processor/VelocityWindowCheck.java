@@ -5,6 +5,7 @@ import szp.rafael.cct.model.creditCard.ProcessedClientCCTransaction;
 
 import java.math.BigDecimal;
 import java.time.Duration;
+import java.util.stream.Collectors;
 
 public class VelocityWindowCheck extends AbstractWindowProcessor{
 
@@ -23,13 +24,18 @@ public class VelocityWindowCheck extends AbstractWindowProcessor{
 
         double sumAmount = 0.0d;
 
-        CreditCardTransaction firstTransaction = transaction.getLastCCTransactions().stream().findFirst().get();
+        CreditCardTransaction firstTransaction = transaction.getLastCCTransactions().stream().filter(t->!t.getTransactionId().equals(transaction.getCurrentClientCCTransaction().getTransactionId()))
+                .toList()
+                .stream().findFirst().get();
         CreditCardTransaction lastTransaction = transaction.getLastCCTransactions().stream().reduce((first, second) -> second).get();
         for (CreditCardTransaction fetchTransaction : transaction.getLastCCTransactions()) {
             sumAmount += fetchTransaction.getAmount().doubleValue();
         }
 
-        if(exceedsRate(sumAmount,firstTransaction.getTimestamp(),lastTransaction.getTimestamp())){
+        long timestamp = firstTransaction.getTimestamp();
+        long timestamp1 = lastTransaction.getTimestamp();
+        if(exceedsRate(sumAmount, timestamp, timestamp1)){
+            getLogger().warn("FRAUD {}: {}",transaction.getCurrentClientCCTransaction().getClientId(), computeRate(sumAmount,timestamp,timestamp1));
             return EvaluationType.FRAUD;
         }
 
@@ -53,6 +59,11 @@ public class VelocityWindowCheck extends AbstractWindowProcessor{
     private static boolean exceedsRate(double totalAmount,
                                       long firstTimestampMs,
                                       long lastTimestampMs) {
+
+        if(firstTimestampMs==lastTimestampMs){
+            return false;
+        }
+
         if (lastTimestampMs <= firstTimestampMs) {
             // evita divisão por zero, considera mínimo de 1 segundo
             lastTimestampMs = firstTimestampMs + 1000;
