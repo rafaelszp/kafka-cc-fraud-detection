@@ -51,6 +51,9 @@ public class ProcessedClientCCTransaction extends AbstractModel {
     }
 
     public BigDecimal getFraudScore() {
+        if(fraudScore==null){
+            return BigDecimal.ZERO.setScale(2, RoundingMode.HALF_EVEN);
+        }
         return fraudScore;
     }
 

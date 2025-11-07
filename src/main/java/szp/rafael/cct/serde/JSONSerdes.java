@@ -6,11 +6,12 @@ import org.apache.kafka.common.serialization.Serializer;
 
 public class JSONSerdes<T> implements Serde<T> {
 
-    private final Class<T> tClass;
+    private Class<T> tClass;
 
     public JSONSerdes(Class<T> tClass) {
         this.tClass = tClass;
     }
+
 
     @Override
     public Serializer<T> serializer() {

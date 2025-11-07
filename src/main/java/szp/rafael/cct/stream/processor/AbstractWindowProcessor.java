@@ -80,9 +80,10 @@ public abstract class AbstractWindowProcessor implements ProcessorSupplier<Strin
                 if (evaluation == EvaluationType.FRAUD) {
                     transaction.setFraudScore(transaction.getFraudScore().add(BigDecimal.valueOf(getFraudScore())).setScale(3, RoundingMode.HALF_EVEN));
                 }
-                Record<String, ProcessedClientCCTransaction> fwd = new Record<String, ProcessedClientCCTransaction>(record.key(),transaction, record.timestamp());
+                Record<String, ProcessedClientCCTransaction> fwd = new Record<String, ProcessedClientCCTransaction>(record.key(),transaction, record.value().getTimestamp());
 
                 transactionStore.put(record.key(), transaction,clientTransaction.getTimestamp());
+                logger.debug("forwarding {}",fwd.value().getCurrentClientCCTransaction().getTransactionId());
 
                 context.forward(fwd);
             }
