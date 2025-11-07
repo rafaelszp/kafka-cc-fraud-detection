@@ -109,45 +109,29 @@ public class CreditCardTransactionTopologyFinal {
                 .process(new HighFrequencyWindowCheck(HIGH_FREQ_CC_STORE), HIGH_FREQ_CC_STORE);
 
 
-        //Agora vamos fazer join
+        //Configurando reparticionamento
         Repartitioned<String, ProcessedClientCCTransaction> repartitionParams =
-                Repartitioned.with(Serdes.String(), getProcessedClientCCTransactionJSONSerdes());
+                Repartitioned.with(Serdes.String(), getProcessedClientCCTransactionJSONSerdes()).withName("rekey-to-tx-id");
 
-        //Aqui resolvi fazer um merge em vez de join, dessa forma evito explosão de cardinalidade
-        //Uma melhoria que posso fazer é fazer o merge sem reparticionar 5x (um para cada verificador)
-        //A idéia seria reparticionar após o processamento de CCTxMerger, daí seria 1 reparticionamento em vez de 5
-        KStream<String, ProcessedClientCCTransaction> geo = geoTransactionStream
-                .selectKey((k, n) -> n.getCurrentClientCCTransaction().getTransactionId()) // MUDANÇA: Chave é o ID da Transação
-                .repartition(repartitionParams.withName("geo-tx-by-tid"));
-
-        KStream<String, ProcessedClientCCTransaction> ip = ipTransactionStream
-                .selectKey((k, tx) -> tx.getCurrentClientCCTransaction().getTransactionId()) // MUDANÇA: Chave é o ID da Transação
-                .repartition(repartitionParams.withName("ip-tx-by-tid"));
-
-        KStream<String, ProcessedClientCCTransaction> pattern = patternTransactionStream
-                .selectKey((k, tx) -> tx.getCurrentClientCCTransaction().getTransactionId()) // MUDANÇA: Chave é o ID da Transação
-                .repartition(repartitionParams.withName("pattern-tx-by-tid"));
-
-        KStream<String, ProcessedClientCCTransaction> velocity = velocityTransactionStream
-                .selectKey((k, tx) -> tx.getCurrentClientCCTransaction().getTransactionId()) // MUDANÇA: Chave é o ID da Transação
-                .repartition(repartitionParams.withName("velocity-tx-by-tid"));
-
-        KStream<String, ProcessedClientCCTransaction> hf = highFreqTransactionStream
-                .selectKey((k, tx) -> tx.getCurrentClientCCTransaction().getTransactionId()) // MUDANÇA: Chave é o ID da Transação
-                .repartition(repartitionParams.withName("highfreq-tx-by-tid"));
-
-        //Fazendo merge em vez de join sobretudo porque as streams contem todos os resultados
         // Como nao há filtragem, vamos por esse caminho
-        KStream<String, ProcessedClientCCTransaction> unioned = geo
-                .merge(ip)
-                .merge(pattern)
-                .merge(velocity)
-                .merge(hf)
+        KStream<String, ProcessedClientCCTransaction> unionedByClientId = geoTransactionStream
+                .merge(ipTransactionStream)
+                .merge(patternTransactionStream)
+                .merge(velocityTransactionStream)
+                .merge(highFreqTransactionStream)
                 ;
 
+        KStream<String, ProcessedClientCCTransaction> unionedByTxId = unionedByClientId.selectKey((clientId, tx) -> tx.getCurrentClientCCTransaction().getTransactionId(), Named.as("rekey-to-tx-id"))
+                .repartition(repartitionParams);
 
 
-        KStream<String, ProcessedClientCCTransaction> mergeStream = unioned.process(() -> new CCTxMerger(FRAUD_AGG_STORE), FRAUD_AGG_STORE);
+        // Juntando todos os resultados e fazendo uma agregação por uma tumbling window (5min)
+        KStream<String, ProcessedClientCCTransaction> mergeStream = unionedByTxId.process(
+                () -> new CCTxMerger(FRAUD_AGG_STORE),
+                Named.as("CCTxMergerProcessor"),
+                FRAUD_AGG_STORE
+        );
+
         mergeStream.to(CC_TX_MERGE, Produced.with(Serdes.String(), getProcessedClientCCTransactionJSONSerdes()));
 
 //        mergeStream.peek((k,v)-> {
