@@ -189,6 +189,9 @@ public class CreditCardTransactionTopologyFinal {
     public static StoreBuilder<WindowStore<String, ProcessedClientCCTransaction>> createWindowStore(String storeName, Duration windowSize) {
         Map<String, String> changelogConfig = new HashMap<>();
         changelogConfig.put("min.insync.replicas", "1");
+        changelogConfig.put("segment.bytes", "67108864 ");//64Mb - Afim de fazer compaction mais rapido
+        changelogConfig.put("compression.type", "lz4 ");
+        changelogConfig.put("min.cleanable.dirty.ratio", "0.35 ");
 
         StoreBuilder<WindowStore<String, ProcessedClientCCTransaction>> store =
                 Stores.windowStoreBuilder(

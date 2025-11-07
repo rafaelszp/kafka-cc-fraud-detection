@@ -107,7 +107,7 @@ public class MainAppTestFinal {
 
             int refusedCount = refusedTransactions.size();
             System.out.println("refusedTransactions   = " + refusedCount);
-            refusedTransactions.forEach(rfs-> System.out.println("rf = " + rfs.getCurrentClientCCTransaction().getTransactionId()+" fs:  "+rfs.getFraudScore().doubleValue()
+            refusedTransactions.forEach(rfs-> System.out.println("rf = " + rfs.getCurrentClientCCTransaction().getTransactionId()+" fs:  "+rfs.getFraudScore().doubleValue()+" | "
                     +rfs.getLastCCTransactions().stream().map(CreditCardTransaction::getTransactionId).collect(Collectors.joining(", "))));
 
             assertEquals(expectedCompletedCount, processedCount);
