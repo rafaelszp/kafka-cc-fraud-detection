@@ -54,7 +54,9 @@ public class CreditCardTransactionTopologyFinal {
     public static Topology build() {
         StreamsBuilder builder = new StreamsBuilder();
 
-        // Passo 1 - Capturando as transações
+       /*
+       * Passo 1: Entrada e Chaveamento por clientId
+       * */
 
         KStream<String, CreditCardTransaction> transactionsStream = builder.stream(TRANSACTIONS_TOPIC, Consumed.with(Serdes.String(), getCreditCardTransactionSerde()));
         transactionsStream
@@ -62,8 +64,7 @@ public class CreditCardTransactionTopologyFinal {
                 .to(CLIENT_TRANSACTIONS_TOPIC, Produced.with(Serdes.String(), getCreditCardTransactionSerde()));
 
 
-        //Passo 2 - Como o chaveamento foi feito pela transaction ID, preciso fazer um rekey para um topico correto,
-        // para que as transações de cada conta fiquem na mesma partição
+
         KStream<String, CreditCardTransaction> transactionsByClientStream = builder.stream(CLIENT_TRANSACTIONS_TOPIC, Consumed.with(Serdes.String(), getCreditCardTransactionSerde()));
 
 
@@ -90,9 +91,8 @@ public class CreditCardTransactionTopologyFinal {
         builder.addStateStore(highFreqStore);
         builder.addStateStore(fraudFlagsStore);
 
-        //Aspecto importante!!!!!!
-        //Estou considerando que esta aplicação pega eventos gerados por processadores anteriores que gravam o transactionTime
-        //corretamente. Não é intenção usar ingestion, event, wallclock ou qq outro tipo de time.
+   /*
+   * Passo 2: Processamento Paralelo por Janela (Regras de Fraude)*/
         KStream<String, ProcessedClientCCTransaction> geoTransactionStream = transactionsByClientStream
                 .process(new GeoWindowCheck(GEO_CC_STORE), GEO_CC_STORE);
 
@@ -109,17 +109,21 @@ public class CreditCardTransactionTopologyFinal {
                 .process(new HighFrequencyWindowCheck(HIGH_FREQ_CC_STORE), HIGH_FREQ_CC_STORE);
 
 
-        //Configurando reparticionamento
+        /*
+        * Passo 3: Otimização de IO (Merge-before-Repartition) */
+
+
         Repartitioned<String, ProcessedClientCCTransaction> repartitionParams =
                 Repartitioned.with(Serdes.String(), getProcessedClientCCTransactionJSONSerdes()).withName("rekey-to-tx-id");
 
-        // Como nao há filtragem, vamos por esse caminho
+        // Aqui estou utilizando o merge em vez do join para evitar explosão de cardinalidade.
+        // Neste cenário é melhor o merge, pois preciso agregar posteriormente os resultados das análises de fraude.
+        //O processador CCTxMerger irá fazer as agregações (com janela de grace) somando o score das fraudes
         KStream<String, ProcessedClientCCTransaction> unionedByClientId = geoTransactionStream
                 .merge(ipTransactionStream)
                 .merge(patternTransactionStream)
                 .merge(velocityTransactionStream)
-                .merge(highFreqTransactionStream)
-                ;
+                .merge(highFreqTransactionStream);
 
         KStream<String, ProcessedClientCCTransaction> unionedByTxId = unionedByClientId.selectKey((clientId, tx) -> tx.getCurrentClientCCTransaction().getTransactionId(), Named.as("rekey-to-tx-id"))
                 .repartition(repartitionParams);
@@ -132,6 +136,7 @@ public class CreditCardTransactionTopologyFinal {
                 FRAUD_AGG_STORE
         );
 
+        //Aqui vou pulibc
         mergeStream.to(CC_TX_MERGE, Produced.with(Serdes.String(), getProcessedClientCCTransactionJSONSerdes()));
 
 //        mergeStream.peek((k,v)-> {

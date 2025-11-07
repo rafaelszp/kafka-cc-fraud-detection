@@ -13,4 +13,5 @@
 
 
 ## Appendix
+- Análise feita pelo gemini (ficou até boa): [Análise da topologia](AnaliseGemini.md)
 - Topology visualizer: https://zz85.github.io/kafka-streams-viz/
