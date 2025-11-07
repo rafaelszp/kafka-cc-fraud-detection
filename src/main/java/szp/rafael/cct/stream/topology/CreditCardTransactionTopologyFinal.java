@@ -70,13 +70,13 @@ public class CreditCardTransactionTopologyFinal {
         Map<String, String> changelogConfig = new HashMap<>();
         changelogConfig.put("min.insync.replicas", "1");
 
-        Duration joinWindowSize = Duration.ofMinutes(30);
+        Duration analysisWindowSize = Duration.ofMinutes(30);
 
-        StoreBuilder<WindowStore<String, ProcessedClientCCTransaction>> geoStore = createWindowStore(GEO_CC_STORE, joinWindowSize);
-        StoreBuilder<WindowStore<String, ProcessedClientCCTransaction>> ipStore = createWindowStore(IP_CC_STORE, joinWindowSize);
-        StoreBuilder<WindowStore<String, ProcessedClientCCTransaction>> patternStore = createWindowStore(PATTERN_CC_STORE, joinWindowSize);
-        StoreBuilder<WindowStore<String, ProcessedClientCCTransaction>> velocityStore = createWindowStore(VELOCITY_CC_STORE, joinWindowSize);
-        StoreBuilder<WindowStore<String, ProcessedClientCCTransaction>> highFreqStore = createWindowStore(HIGH_FREQ_CC_STORE, joinWindowSize);
+        StoreBuilder<WindowStore<String, ProcessedClientCCTransaction>> geoStore = createWindowStore(GEO_CC_STORE, analysisWindowSize);
+        StoreBuilder<WindowStore<String, ProcessedClientCCTransaction>> ipStore = createWindowStore(IP_CC_STORE, analysisWindowSize);
+        StoreBuilder<WindowStore<String, ProcessedClientCCTransaction>> patternStore = createWindowStore(PATTERN_CC_STORE, analysisWindowSize);
+        StoreBuilder<WindowStore<String, ProcessedClientCCTransaction>> velocityStore = createWindowStore(VELOCITY_CC_STORE, analysisWindowSize);
+        StoreBuilder<WindowStore<String, ProcessedClientCCTransaction>> highFreqStore = createWindowStore(HIGH_FREQ_CC_STORE, analysisWindowSize);
         StoreBuilder<KeyValueStore<String, ProcessedClientCCTransaction>> fraudFlagsStore = Stores.keyValueStoreBuilder(
                 Stores.persistentKeyValueStore(FRAUD_AGG_STORE),
                 Serdes.String(),
