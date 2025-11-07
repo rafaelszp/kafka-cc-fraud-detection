@@ -3,6 +3,10 @@
 - https://kafka.apache.org/21/documentation/streams/developer-guide/testing.html
 - https://developer.confluent.io/courses/kafka-streams/hands-on-testing/
 
+
+## Notes
+
+- MainApp won't be implemented use [MainAppTestFinal.java](./src/test/java/szp/rafael/cct/MainAppTestFinal.java) instead
 ## Final Version
 
 ![Topology](final_topology.png)
