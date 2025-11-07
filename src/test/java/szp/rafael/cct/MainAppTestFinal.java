@@ -15,10 +15,9 @@ import szp.rafael.cct.model.creditCard.CreditCardTransaction;
 import szp.rafael.cct.model.creditCard.Geolocation;
 import szp.rafael.cct.model.creditCard.IpData;
 import szp.rafael.cct.model.creditCard.ProcessedClientCCTransaction;
-import szp.rafael.cct.stream.topology.CreditCardTransactionTopologyV2;
+import szp.rafael.cct.stream.topology.CreditCardTransactionTopologyFinal;
 
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -27,8 +26,10 @@ import java.util.Properties;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
-public class MainAppTestV2 {
+
+public class MainAppTestFinal {
 
     Properties streamProps = new Properties();
 
@@ -51,13 +52,13 @@ public class MainAppTestV2 {
     @Test
     public void should_process_account_transactions(){
 
-        Topology build = CreditCardTransactionTopologyV2.build();
-//        System.out.println(build.describe());
+        Topology build = CreditCardTransactionTopologyFinal.build();
+        System.out.println(build.describe());
         try (final TopologyTestDriver testDriver = new TopologyTestDriver(build, streamProps)) {
             final TestInputTopic<String, CreditCardTransaction> ccTransactions = testDriver.createInputTopic(
-                    CreditCardTransactionTopologyV2.TRANSACTIONS_TOPIC,
+                    CreditCardTransactionTopologyFinal.TRANSACTIONS_TOPIC,
                     Serdes.String().serializer(),
-                    CreditCardTransactionTopologyV2.getCreditCardTransactionSerde().serializer()
+                    CreditCardTransactionTopologyFinal.getCreditCardTransactionSerde().serializer()
             );
 
             String accountId = "ACC_01";
@@ -67,7 +68,7 @@ public class MainAppTestV2 {
 
             IpData ipData = new IpData("200.241.235.123");
             ;
-            Instant now = Instant.ofEpochMilli(1761937000000L);
+            Instant now = Instant.ofEpochMilli(1761937000000L); //2025-10-31T18:56:40Z
             final List<CreditCardTransaction> transactions = List.of(
                     new CreditCardTransaction(UlidCreator.getMonotonicUlid().toLowerCase(),accountId,BigDecimal.valueOf(10d), now.toEpochMilli(),cardDetails,goianiaGeo,ipData),
                     new CreditCardTransaction(UlidCreator.getMonotonicUlid().toLowerCase(),accountId,BigDecimal.valueOf(15d), now.plus(5,ChronoUnit.MINUTES).toEpochMilli(),cardDetails,goianiaGeo,ipData),
@@ -80,43 +81,39 @@ public class MainAppTestV2 {
 
             transactions.forEach(txn-> ccTransactions.pipeInput(txn.getTransactionId(),txn,txn.getTimestamp()));
 
-            final BigDecimal expectedValue = BigDecimal.ZERO.setScale(2, RoundingMode.HALF_EVEN);
-
 
             final TestOutputTopic<String, ProcessedClientCCTransaction> processedAccountTransactionsTopic = testDriver.createOutputTopic(
-                    CreditCardTransactionTopologyV2.PROCESSED_CREDIT_CARD_TRANSACTIONS_TOPIC,
+                    CreditCardTransactionTopologyFinal.PROCESSED_CREDIT_CARD_TRANSACTIONS_TOPIC,
                     Serdes.String().deserializer(),
-                    CreditCardTransactionTopologyV2.getProcessedClientCCTransactionJSONSerdes().deserializer()
+                    CreditCardTransactionTopologyFinal.getProcessedClientCCTransactionJSONSerdes().deserializer()
             );
 
             final TestOutputTopic<String, ProcessedClientCCTransaction> refusedTransactionsTopic = testDriver.createOutputTopic(
-                    CreditCardTransactionTopologyV2.REFUSED_CREDIT_CARD_TRANSACTIONS_TOPIC,
+                    CreditCardTransactionTopologyFinal.REFUSED_CREDIT_CARD_TRANSACTIONS_TOPIC,
                     Serdes.String().deserializer(),
-                    CreditCardTransactionTopologyV2.getProcessedClientCCTransactionJSONSerdes().deserializer()
+                    CreditCardTransactionTopologyFinal.getProcessedClientCCTransactionJSONSerdes().deserializer()
             );
-            final int expectedRejectedCount = 1;
+            final int expectedRejectedCount = 2;
             final int expectedCompletedCount = transactions.size() - expectedRejectedCount;
 
-            testDriver.advanceWallClockTime(Duration.of(5, ChronoUnit.HOURS));
-
+            testDriver.advanceWallClockTime(Duration.of(3, ChronoUnit.HOURS));
 
             List<ProcessedClientCCTransaction> processedTransactions = processedAccountTransactionsTopic.readValuesToList();
             List<ProcessedClientCCTransaction> refusedTransactions = refusedTransactionsTopic.readValuesToList();
-            System.out.println("processedTransactions = " + processedTransactions.size());
-            processedTransactions.forEach(pt-> System.out.println("ac = " + pt.getCurrentClientCCTransaction().getTransactionId()+" fs:  "+pt.getFraudScore().doubleValue()));
-            System.out.println("refusedTransactions   = " + refusedTransactions.size());
-            refusedTransactions.forEach(pt-> System.out.println("rf = " + pt.getCurrentClientCCTransaction().getTransactionId()+" fs:  "+pt.getFraudScore().doubleValue()
-                    +pt.getLastCCTransactions().stream().map(CreditCardTransaction::getTransactionId).collect(Collectors.joining(", "))));
-//            Assertions.assertEquals(expectedCompletedCount,processedTransactions.stream().filter(pt-> AccountTransaction.TransactionStatus.COMPLETED.equals(pt.getTransaction().getStatus())).count());
-//            Assertions.assertEquals(expectedRejectedCount,processedTransactions.stream().filter(pt-> AccountTransaction.TransactionStatus.REJECTED.equals(pt.getTransaction().getStatus())).count());
 
+            int processedCount = processedTransactions.size();
+            System.out.println("processedTransactions = " + processedCount);
+            processedTransactions.forEach(proc-> System.out.println("ac = " + proc.getCurrentClientCCTransaction().getTransactionId()+" fs:  "+proc.getFraudScore().doubleValue()));
 
+            int refusedCount = refusedTransactions.size();
+            System.out.println("refusedTransactions   = " + refusedCount);
+            refusedTransactions.forEach(rfs-> System.out.println("rf = " + rfs.getCurrentClientCCTransaction().getTransactionId()+" fs:  "+rfs.getFraudScore().doubleValue()
+                    +rfs.getLastCCTransactions().stream().map(CreditCardTransaction::getTransactionId).collect(Collectors.joining(", "))));
 
-            CreditCardTransaction fifthTransaction = transactions.get(5);
-//            Assertions.assertEquals(expectedValue,txVal.getFraudScore());
+            assertEquals(expectedCompletedCount, processedCount);
+            assertEquals(expectedRejectedCount, refusedCount);
+
         }
-
-
 
     }
 

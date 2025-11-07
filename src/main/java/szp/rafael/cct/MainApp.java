@@ -8,6 +8,7 @@ import org.slf4j.Logger;
 import szp.rafael.cct.model.AccountTransaction;
 import szp.rafael.cct.serde.JSONSerdes;
 import szp.rafael.cct.stream.topology.CreditCardTransactionTopology;
+import szp.rafael.cct.stream.topology.CreditCardTransactionTopologyFinal;
 
 import java.util.Properties;
 import java.util.Random;
@@ -19,7 +20,13 @@ public class MainApp {
 
 
     public static void main(String[] args) {
-        System.out.println("Hello, Kafka Account Transaction!");
+
+        if(true)
+            throw new RuntimeException("Not ready yet. use MainAppTestFinal.java to run this project");
+
+        System.out.println("Hello, Kafka CC Transaction!");
+
+
 
         Random random = new Random();
         Properties props = new Properties();
@@ -31,7 +38,7 @@ public class MainApp {
         props.put("JsonPOJOClass", AccountTransaction.class);
         props.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
 
-        KafkaStreams streams = new KafkaStreams(CreditCardTransactionTopology.build(), props);
+        KafkaStreams streams = new KafkaStreams(CreditCardTransactionTopologyFinal.build(), props);
 
         Runtime.getRuntime().addShutdownHook(new Thread(streams::close));
         streams.start();

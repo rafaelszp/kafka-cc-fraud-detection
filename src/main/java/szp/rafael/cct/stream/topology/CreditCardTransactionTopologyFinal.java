@@ -2,14 +2,12 @@ package szp.rafael.cct.stream.topology;
 
 import org.apache.kafka.common.serialization.Serde;
 import org.apache.kafka.common.serialization.Serdes;
-import org.apache.kafka.common.utils.Bytes;
 import org.apache.kafka.streams.StreamsBuilder;
 import org.apache.kafka.streams.Topology;
 import org.apache.kafka.streams.kstream.Branched;
 import org.apache.kafka.streams.kstream.Consumed;
 import org.apache.kafka.streams.kstream.KStream;
 import org.apache.kafka.streams.kstream.KTable;
-import org.apache.kafka.streams.kstream.Materialized;
 import org.apache.kafka.streams.kstream.Named;
 import org.apache.kafka.streams.kstream.Produced;
 import org.apache.kafka.streams.kstream.Repartitioned;
@@ -35,11 +33,11 @@ import java.time.temporal.ChronoUnit;
 import java.util.HashMap;
 import java.util.Map;
 
-public class CreditCardTransactionTopologyV2 {
+public class CreditCardTransactionTopologyFinal {
 
     public static final String FRAUD_AGG_STORE = "fraud-agg-store";
     public static final String CC_TX_MERGE = "cc-tx-merge";
-    static Logger logger = org.slf4j.LoggerFactory.getLogger(CreditCardTransactionTopologyV2.class);
+    static Logger logger = org.slf4j.LoggerFactory.getLogger(CreditCardTransactionTopologyFinal.class);
 
     public static final String TRANSACTIONS_TOPIC = "credit-card-transactions";
     public static final String CLIENT_TRANSACTIONS_TOPIC = "credit-card-transactions-by-client";
@@ -56,9 +54,6 @@ public class CreditCardTransactionTopologyV2 {
     public static Topology build() {
         StreamsBuilder builder = new StreamsBuilder();
 
-        Duration windowSize30min = Duration.ofMinutes(30);
-
-
         // Passo 1 - Capturando as transações
 
         KStream<String, CreditCardTransaction> transactionsStream = builder.stream(TRANSACTIONS_TOPIC, Consumed.with(Serdes.String(), getCreditCardTransactionSerde()));
@@ -66,12 +61,6 @@ public class CreditCardTransactionTopologyV2 {
                 .selectKey((key, transaction) -> transaction.getClientId(), Named.as("cc-tx-by-client"))
                 .to(CLIENT_TRANSACTIONS_TOPIC, Produced.with(Serdes.String(), getCreditCardTransactionSerde()));
 
-        // ===== Materializa KTable das transações para enriquecer no final =====
-        KTable<String, CreditCardTransaction> transactionsTable = transactionsStream.toTable(
-                Materialized.<String, CreditCardTransaction, KeyValueStore<Bytes, byte[]>>as("transactions-ktable-store")
-                        .withKeySerde(Serdes.String())
-                        .withValueSerde(getCreditCardTransactionSerde())
-        );
 
         //Passo 2 - Como o chaveamento foi feito pela transaction ID, preciso fazer um rekey para um topico correto,
         // para que as transações de cada conta fiquem na mesma partição
@@ -129,27 +118,24 @@ public class CreditCardTransactionTopologyV2 {
         //Isso é tão verdade que quando gerei 7 transações, ao final ele gerou 3157 registros
 
         KStream<String, ProcessedClientCCTransaction> geo = geoTransactionStream
-                .selectKey((k, n) -> n.getCurrentClientCCTransaction().getTransactionId(), Named.as("geo-tx-by-tid")) // MUDANÇA: Chave é o ID da Transação
-                .repartition(repartitionParams);
+                .selectKey((k, n) -> n.getCurrentClientCCTransaction().getTransactionId()) // MUDANÇA: Chave é o ID da Transação
+                .repartition(repartitionParams.withName("geo-tx-by-tid"));
 
         KStream<String, ProcessedClientCCTransaction> ip = ipTransactionStream
-                .selectKey((k, tx) -> tx.getCurrentClientCCTransaction().getTransactionId(), Named.as("ip-tx-by-tid")) // MUDANÇA: Chave é o ID da Transação
-                .repartition(repartitionParams);
+                .selectKey((k, tx) -> tx.getCurrentClientCCTransaction().getTransactionId()) // MUDANÇA: Chave é o ID da Transação
+                .repartition(repartitionParams.withName("ip-tx-by-tid"));
 
         KStream<String, ProcessedClientCCTransaction> pattern = patternTransactionStream
-                .selectKey((k, tx) -> tx.getCurrentClientCCTransaction().getTransactionId(), Named.as("pattern-tx-by-tid")) // MUDANÇA: Chave é o ID da Transação
-                .repartition(repartitionParams);
+                .selectKey((k, tx) -> tx.getCurrentClientCCTransaction().getTransactionId()) // MUDANÇA: Chave é o ID da Transação
+                .repartition(repartitionParams.withName("pattern-tx-by-tid"));
 
         KStream<String, ProcessedClientCCTransaction> velocity = velocityTransactionStream
-                .selectKey((k, tx) -> tx.getCurrentClientCCTransaction().getTransactionId(), Named.as("velocity-tx-by-tid")) // MUDANÇA: Chave é o ID da Transação
-                .repartition(repartitionParams);
+                .selectKey((k, tx) -> tx.getCurrentClientCCTransaction().getTransactionId()) // MUDANÇA: Chave é o ID da Transação
+                .repartition(repartitionParams.withName("velocity-tx-by-tid"));
 
         KStream<String, ProcessedClientCCTransaction> hf = highFreqTransactionStream
-                .selectKey((k, tx) -> tx.getCurrentClientCCTransaction().getTransactionId(), Named.as("highfreq-tx-by-tid")) // MUDANÇA: Chave é o ID da Transação
-                .repartition(repartitionParams);
-
-
-
+                .selectKey((k, tx) -> tx.getCurrentClientCCTransaction().getTransactionId()) // MUDANÇA: Chave é o ID da Transação
+                .repartition(repartitionParams.withName("highfreq-tx-by-tid"));
 
         //Fazendo merge em vez de join sobretudo porque as streams contem todos os resultados
         // Como nao há filtragem, vamos por esse caminho
@@ -165,9 +151,9 @@ public class CreditCardTransactionTopologyV2 {
         KStream<String, ProcessedClientCCTransaction> mergeStream = unioned.process(() -> new CCTxMerger(FRAUD_AGG_STORE), FRAUD_AGG_STORE);
         mergeStream.to(CC_TX_MERGE, Produced.with(Serdes.String(), getProcessedClientCCTransactionJSONSerdes()));
 
-        mergeStream.peek((k,v)-> {
-            logger.debug("mergeStream k {} fraud{}",k,v.getCurrentClientCCTransaction().getTransactionId());
-        });
+//        mergeStream.peek((k,v)-> {
+//            logger.debug("mergeStream k {} fraud{}",k,v.getCurrentClientCCTransaction().getTransactionId());
+//        });
 
         KTable<String, ProcessedClientCCTransaction> consolidatedTable = builder.table(CC_TX_MERGE, Consumed.with(Serdes.String(), getProcessedClientCCTransactionJSONSerdes()));
 
@@ -178,9 +164,9 @@ public class CreditCardTransactionTopologyV2 {
                 .defaultBranch(Branched.as("NOT_FRAUD"));
 
 
-        finalStream.peek((key, value) ->{
-            logger.debug("k: {} | fraudScore: {}", key,value.getFraudScore());
-        });
+//        finalStream.peek((key, value) ->{
+//            logger.debug("k: {} | fraudScore: {}", key,value.getFraudScore());
+//        });
 
         branches.get("EVALUATED_STREAM-FRAUD").to(REFUSED_CREDIT_CARD_TRANSACTIONS_TOPIC, Produced.with(Serdes.String(), getProcessedClientCCTransactionJSONSerdes()));
         branches.get("EVALUATED_STREAM-NOT_FRAUD").to(PROCESSED_CREDIT_CARD_TRANSACTIONS_TOPIC, Produced.with(Serdes.String(), getProcessedClientCCTransactionJSONSerdes()));
