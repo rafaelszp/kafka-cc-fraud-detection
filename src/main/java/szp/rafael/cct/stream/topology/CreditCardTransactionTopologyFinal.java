@@ -113,10 +113,9 @@ public class CreditCardTransactionTopologyFinal {
         Repartitioned<String, ProcessedClientCCTransaction> repartitionParams =
                 Repartitioned.with(Serdes.String(), getProcessedClientCCTransactionJSONSerdes());
 
-        //Aqui foi necessário reparticionar para uma nova chave, a transactionId
-        //Se eu mantivesse o clientId, a cada join da janela ele irá gerar L x R registros sendo número de Left * Número de Right
-        //Isso é tão verdade que quando gerei 7 transações, ao final ele gerou 3157 registros
-
+        //Aqui resolvi fazer um merge em vez de join, dessa forma evito explosão de cardinalidade
+        //Uma melhoria que posso fazer é fazer o merge sem reparticionar 5x (um para cada verificador)
+        //A idéia seria reparticionar após o processamento de CCTxMerger, daí seria 1 reparticionamento em vez de 5
         KStream<String, ProcessedClientCCTransaction> geo = geoTransactionStream
                 .selectKey((k, n) -> n.getCurrentClientCCTransaction().getTransactionId()) // MUDANÇA: Chave é o ID da Transação
                 .repartition(repartitionParams.withName("geo-tx-by-tid"));
